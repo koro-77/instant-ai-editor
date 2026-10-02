@@ -17,7 +17,21 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const QUICK = ["Make it look cinematic", "Moody dark Instagram style", "Bright clean TikTok look", "Vintage film grain"];
+const QUICK = [
+  "Cinematic movie grade",
+  "Moody dark Instagram",
+  "Bright clean TikTok",
+  "Vintage film grain",
+  "Anime / dreamy glow",
+  "Neon cyberpunk night",
+  "Velocity shake edit",
+  "Y2K flash look",
+  "Teal & orange",
+  "Black & white color-pop",
+  "RGB split glitch",
+  "Golden hour warmth",
+];
+const APPS = ["Auto", "Alight Motion", "CapCut", "Lightroom", "Snapseed", "VN", "InShot", "PicsArt", "Photoshop", "Premiere Pro", "After Effects", "DaVinci Resolve"];
 
 async function fileToDataUrl(f: Blob): Promise<string> {
   return new Promise((res, rej) => {
@@ -64,6 +78,7 @@ function Index() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
+  const [app, setApp] = useState("Auto");
   const [lesson, setLesson] = useState("");
   const [edited, setEdited] = useState<string | null>(null);
   const [editFinal, setEditFinal] = useState(false);
@@ -95,7 +110,7 @@ function Index() {
         const res = await fetch("/api/coach", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ instruction, mode: isVideo ? "video" : "photo", images }),
+          body: JSON.stringify({ instruction, app, mode: isVideo ? "video" : "photo", images }),
         });
         if (!res.ok || !res.body) throw new Error(await res.text());
         const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -182,6 +197,18 @@ function Index() {
               </button>
             ))}
           </div>
+          <p className="mt-4 text-sm font-semibold text-muted-foreground">Teach me in</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {APPS.map((a) => (
+              <button
+                key={a}
+                onClick={() => setApp(a)}
+                className={`rounded-full px-3 py-1 text-sm transition ${a === app ? "bg-accent text-accent-foreground" : "bg-secondary text-secondary-foreground hover:bg-muted"}`}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
           <button
             onClick={run}
             disabled={!file || busy}
@@ -208,6 +235,18 @@ function Index() {
                 <a href={edited} download="cutline-edit.png" className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">
                   Download edit
                 </a>
+              )}
+              {edited && editFinal && !busy && (
+                <button
+                  onClick={async () => {
+                    const blob = await (await fetch(edited)).blob();
+                    pick(new File([blob], "edit.png", { type: "image/png" }));
+                    setInstruction("");
+                  }}
+                  className="ml-4 mt-3 inline-block text-sm font-semibold text-accent hover:underline"
+                >
+                  Keep editing this
+                </button>
               )}
             </div>
           )}
