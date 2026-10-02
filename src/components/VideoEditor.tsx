@@ -27,6 +27,8 @@ const n = (v: unknown, d: number, lo: number, hi: number) => {
   return Math.min(hi, Math.max(lo, x));
 };
 
+const GRAIN_TILE = 128;
+
 const fmt = (s: number) => {
   if (!isFinite(s) || s < 0) return "0:00";
   const m = Math.floor(s / 60);
@@ -34,7 +36,7 @@ const fmt = (s: number) => {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 };
 
-function drawFrame(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, s: VideoStyle, t: number) {
+function drawFrame(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, s: VideoStyle, t: number, grainPattern: CanvasPattern | null) {
   const { width: W, height: H } = ctx.canvas;
   const filter = `brightness(${n(s.brightness, 1, 0.3, 2)}) contrast(${n(s.contrast, 1, 0.3, 2.5)}) saturate(${n(s.saturate, 1, 0, 3)}) hue-rotate(${n(s.hue, 0, -180, 180)}deg) sepia(${n(s.sepia, 0, 0, 1)}) grayscale(${n(s.grayscale, 0, 0, 1)}) blur(${n(s.blur, 0, 0, 6)}px)`;
   const beat = (t * 2) % 1; // ~120 bpm
@@ -88,12 +90,13 @@ function drawFrame(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, s: Vi
     ctx.fillRect(0, 0, W, H);
   }
   const grain = n(s.grain, 0, 0, 1);
-  if (grain > 0) {
-    ctx.globalAlpha = grain * 0.12;
-    for (let i = 0; i < 600; i++) {
-      ctx.fillStyle = Math.random() > 0.5 ? "#fff" : "#000";
-      ctx.fillRect(Math.random() * W, Math.random() * H, 2, 2);
-    }
+  if (grain > 0 && grainPattern) {
+    ctx.globalAlpha = grain * 0.1;
+    ctx.fillStyle = grainPattern;
+    ctx.save();
+    ctx.translate(-Math.floor(Math.random() * GRAIN_TILE), -Math.floor(Math.random() * GRAIN_TILE));
+    ctx.fillRect(0, 0, W + GRAIN_TILE, H + GRAIN_TILE);
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
   const flash = n(s.flash, 0, 0, 1);
@@ -121,6 +124,7 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
   const [media, setMedia] = useState({ playing: false, muted: false, volume: 1, rate: 1 });
   const [menu, setMenu] = useState(false);
   const [download, setDownload] = useState<{ url: string; ext: string } | null>(null);
+  const dirtyRef = useRef(true);
   const styleRef = useRef(style);
   styleRef.current = style;
 
@@ -129,22 +133,59 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
     const c = canvasRef.current!;
     const ctx = c.getContext("2d")!;
     let raf = 0;
+    let lastDraw = 0;
+
+    // One pre-rendered noise tile reused as a pattern: replaces the old
+    // per-frame loop of 600 random rectangles with a single fill.
+    const tile = document.createElement("canvas");
+    tile.width = GRAIN_TILE;
+    tile.height = GRAIN_TILE;
+    const tctx = tile.getContext("2d");
+    if (tctx) {
+      const img = tctx.createImageData(GRAIN_TILE, GRAIN_TILE);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const val = Math.random() > 0.5 ? 255 : 0;
+        img.data[i] = val;
+        img.data[i + 1] = val;
+        img.data[i + 2] = val;
+        img.data[i + 3] = 255;
+      }
+      tctx.putImageData(img, 0, 0);
+    }
+    const grainPat = ctx.createPattern(tile, "repeat");
+    const render = () => drawFrame(ctx, v, styleRef.current, v.currentTime, grainPat);
+
     const onMeta = () => {
       const k = Math.min(1, 1080 / Math.max(v.videoWidth, v.videoHeight));
       c.width = Math.round(v.videoWidth * k);
       c.height = Math.round(v.videoHeight * k);
+      dirtyRef.current = true;
       setPos({ t: v.currentTime, d: isFinite(v.duration) ? v.duration : 0 });
       setMedia({ playing: !v.paused, muted: v.muted, volume: v.volume, rate: v.playbackRate });
     };
     const sync = () =>
       setMedia({ playing: !v.paused, muted: v.muted, volume: v.volume, rate: v.playbackRate });
+    const markDirty = () => {
+      dirtyRef.current = true;
+    };
     v.addEventListener("loadedmetadata", onMeta);
+    v.addEventListener("loadeddata", markDirty);
+    v.addEventListener("seeked", markDirty);
     v.addEventListener("play", sync);
     v.addEventListener("pause", sync);
     v.addEventListener("volumechange", sync);
     v.addEventListener("ratechange", sync);
     const loop = () => {
-      if (v.readyState >= 2) drawFrame(ctx, v, styleRef.current, v.currentTime);
+      if (v.readyState >= 2) {
+        const now = performance.now();
+        // Draw on demand while paused, and cap live drawing to ~30fps to match
+        // the export capture rate: half the canvas work, same visible result.
+        if (dirtyRef.current || (!v.paused && now - lastDraw >= 1000 / 31)) {
+          render();
+          dirtyRef.current = false;
+          lastDraw = now;
+        }
+      }
       if (v.duration) {
         const d = isFinite(v.duration) ? v.duration : 0;
         setPos((p) =>
@@ -159,6 +200,8 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
     return () => {
       cancelAnimationFrame(raf);
       v.removeEventListener("loadedmetadata", onMeta);
+      v.removeEventListener("loadeddata", markDirty);
+      v.removeEventListener("seeked", markDirty);
       v.removeEventListener("play", sync);
       v.removeEventListener("pause", sync);
       v.removeEventListener("volumechange", sync);
@@ -168,6 +211,7 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.playbackRate = n(style.speed, 1, 0.25, 2);
+    dirtyRef.current = true;
     setDownload(null);
   }, [style]);
 
