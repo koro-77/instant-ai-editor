@@ -7,12 +7,72 @@ const Body = z.object({
   images: z.array(z.string().startsWith("data:image/")).min(1).max(6),
 });
 
-const SYSTEM = `You are a pro video colorist and motion editor. Look at the frames and the user's request, then pick effect settings that make the clip look amazing in that style (trending TikTok / Instagram / YouTube / Alight Motion edits).
-Reply with ONLY a JSON object, no markdown, with these numeric keys:
+// Clamp every value the model returns so a bad or extreme answer can never
+// overcook the clip: wrong types fall back to the neutral default, and
+// out-of-range numbers are clamped into their documented range.
+const num = (lo: number, hi: number, def: number) =>
+  z
+    .number()
+    .catch(def)
+    .transform((v) => Math.min(hi, Math.max(lo, v)));
+
+const Style = z.object({
+  name: z.string().catch("").transform((s) => s.trim().slice(0, 40)),
+  brightness: num(0.5, 1.6, 1),
+  contrast: num(0.5, 1.8, 1),
+  saturate: num(0, 2.5, 1),
+  hue: num(-180, 180, 0),
+  sepia: num(0, 1, 0),
+  grayscale: num(0, 1, 0),
+  blur: num(0, 4, 0),
+  tint: z
+    .string()
+    .catch("none")
+    .transform((s) => (/^#[0-9a-fA-F]{3,8}$/.test(s.trim()) ? s.trim().toLowerCase() : "none")),
+  tintStrength: num(0, 0.6, 0),
+  vignette: num(0, 1, 0),
+  grain: num(0, 1, 0),
+  glow: num(0, 1, 0),
+  rgbSplit: num(0, 12, 0),
+  shake: num(0, 1, 0),
+  zoomPulse: num(0, 0.25, 0),
+  speed: num(0.25, 2, 1),
+  flash: num(0, 1, 0),
+  letterbox: num(0, 0.15, 0),
+});
+
+const SYSTEM = `You are the world's best short-form video colorist: the taste behind viral YouTube Shorts, TikToks and Reels (Alight Motion velocity edits, CapCut trends, cinematic grades).
+You receive frames from the clip plus the user's request, and you return effect settings that make the clip look premium and intentional — never cheap, never overcooked.
+
+Reply with ONLY one JSON object, no markdown and no commentary, with exactly these keys:
 brightness (0.5-1.6, 1 = none), contrast (0.5-1.8, 1 = none), saturate (0-2.5, 1 = none), hue (-180 to 180 degrees), sepia (0-1), grayscale (0-1), blur (0-4 px),
-tint (CSS color string like "#ff8a3d", or "none"), tintStrength (0-0.6), vignette (0-1), grain (0-1), glow (0-1), rgbSplit (0-12 px),
-shake (0-1, camera shake for velocity edits), zoomPulse (0-0.25, rhythmic zoom punch), speed (0.25-2, playback speed, 1 = normal), flash (0-1, white flash on beats),
-letterbox (0-0.15, cinematic black bars height fraction), and "name" (short style name).`;
+tint (hex color like "#ff8a3d", or "none"), tintStrength (0-0.6), vignette (0-1), grain (0-1), glow (0-1), rgbSplit (0-12 px),
+shake (0-1), zoomPulse (0-0.25), speed (0.25-2, playback speed, 1 = normal), flash (0-1), letterbox (0-0.15),
+and "name" (short style name).
+
+HARD RULES
+1. Vague requests — "make it better", "make it pop", "best edit", "improve it", "do your thing", or an empty instruction — mean: tastefully upgrade the clip exactly as it is. Do NOT give it a new identity. For these stay inside brightness 0.95-1.1, contrast 1.0-1.18, saturate 1.0-1.2, vignette <=0.25, grain <=0.3, glow <=0.2, blur 0, and force shake 0, flash 0, rgbSplit 0, speed 1, grayscale 0, sepia 0, hue 0.
+2. Motion effects are spices, not the meal: shake <=0.25, zoomPulse <=0.15, flash <=0.25, rgbSplit <=6 — unless the user explicitly asks for velocity, glitch or hype edits, then use the full range on those keys only.
+3. speed stays 1 unless the user explicitly asks to slow down, speed up, or timelapse.
+4. Set only the keys your chosen style actually needs — usually 3 to 6 keys non-zero. Never switch everything on at once.
+5. People must look good: natural skin tones, no hue swings and no grayscale/sepia on faces unless the user explicitly asked for black and white.
+6. Judge the style from the actual frames (light, subject, motion), and honor an explicitly named style faithfully.
+
+STYLE PRESET CHEAT SHEET (calibration only — blend with what you see in the frames):
+Cinematic: contrast 1.12, saturate 1.05, letterbox 0.12, vignette 0.2, tint "#0f1c2e" tintStrength 0.15, grain 0.15 — name "Cinematic"
+Moody dark: brightness 0.93, contrast 1.15, saturate 0.9, vignette 0.3, tint "#1b2430" tintStrength 0.2 — name "Moody Dark"
+Clean bright TikTok: brightness 1.08, contrast 1.08, saturate 1.15 — name "Clean Pop"
+Y2K flash: contrast 1.2, saturate 1.35, tint "#ff4fd8" tintStrength 0.25, flash 0.15, grain 0.25 — name "Y2K"
+Neon night: brightness 0.95, contrast 1.2, saturate 1.4, tint "#2b00ff" tintStrength 0.3, glow 0.35, vignette 0.25 — name "Neon Night"
+Velocity / Alight Motion: zoomPulse 0.12, shake 0.15, rgbSplit 3, glow 0.2, flash 0.12 — name "Velocity"
+Anime dreamy glow: brightness 1.06, saturate 1.3, glow 0.4, tint "#ffd9ec" tintStrength 0.2, blur 0.5 — name "Dreamy Glow"
+Golden hour: brightness 1.05, contrast 1.05, saturate 1.2, sepia 0.15, tint "#ff9a3d" tintStrength 0.25 — name "Golden Hour"
+Teal and orange: contrast 1.12, saturate 1.15, tint "#0e6b78" tintStrength 0.2, hue -6 — name "Teal & Orange"
+Black and white punch: grayscale 1, contrast 1.2, grain 0.2 — name "Mono Punch"
+RGB glitch: rgbSplit 8, contrast 1.15, shake 0.1 — name "RGB Glitch"
+Vintage film: sepia 0.25, grain 0.4, contrast 1.05, vignette 0.2, tint "#ffd9a0" tintStrength 0.15 — name "Vintage Film"
+
+Every number must sit inside its stated range.`;
 
 export const Route = createFileRoute("/api/video-style")({
   server: {
@@ -32,7 +92,7 @@ export const Route = createFileRoute("/api/video-style")({
             model: "openai/gpt-6-astra",
             stream: true,
             store: false,
-            reasoning: { effort: "low" },
+            reasoning: { effort: "medium" },
             instructions: SYSTEM,
             input: [
               {
@@ -69,7 +129,9 @@ export const Route = createFileRoute("/api/video-style")({
         const match = text.match(/\{[\s\S]*\}/);
         if (!match) return new Response("Couldn't pick a style — try again.", { status: 502 });
         try {
-          return Response.json(JSON.parse(match[0]));
+          // Sanitize: every key validated, defaulted and clamped before it
+          // ever reaches the renderer.
+          return Response.json(Style.parse(JSON.parse(match[0])));
         } catch {
           return new Response("Couldn't pick a style — try again.", { status: 502 });
         }
