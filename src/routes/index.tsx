@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { streamImage } from "@/lib/stream-image";
+import { VideoEditor, type VideoStyle } from "@/components/VideoEditor";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -82,6 +83,7 @@ function Index() {
   const [lesson, setLesson] = useState("");
   const [edited, setEdited] = useState<string | null>(null);
   const [editFinal, setEditFinal] = useState(false);
+  const [vStyle, setVStyle] = useState<VideoStyle | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -93,6 +95,7 @@ function Index() {
     setPreview(URL.createObjectURL(f));
     setLesson("");
     setEdited(null);
+    setVStyle(null);
     setError(null);
   };
 
@@ -121,8 +124,17 @@ function Index() {
         }
       })();
 
+      setVStyle(null);
       const edit = isVideo
-        ? Promise.resolve()
+        ? (async () => {
+            const res = await fetch("/api/video-style", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ instruction, images }),
+            });
+            if (!res.ok) throw new Error(await res.text());
+            setVStyle(await res.json());
+          })()
         : (async () => {
             const blob = await (await fetch(images[0]!)).blob();
             const form = new FormData();
@@ -214,13 +226,21 @@ function Index() {
             disabled={!file || busy}
             className="shadow-glow mt-5 w-full rounded-[var(--radius)] bg-primary py-3 font-display text-2xl tracking-wide text-primary-foreground transition hover:brightness-110 disabled:opacity-40 disabled:shadow-none"
           >
-            {busy ? "Working on it…" : isVideo ? "Get styles + lesson" : "Edit + teach me"}
+            {busy ? "Working on it…" : "Edit + teach me"}
           </button>
-          {isVideo && <p className="mt-2 text-xs text-muted-foreground">For videos, the AI studies your clip and gives you the exact steps to edit it in CapCut.</p>}
+          {isVideo && <p className="mt-2 text-xs text-muted-foreground">The AI edits your video (colors, glow, shake, zoom, flashes and more) and teaches you how to do it yourself.</p>}
           {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
         </div>
 
         <div className="space-y-6">
+          {isVideo && preview && (vStyle || busy) && (
+            <div className="rounded-[var(--radius)] border border-border bg-card p-5">
+              <h2 className="font-display text-3xl text-primary">Your edit{vStyle?.name ? ` — ${vStyle.name}` : ""}</h2>
+              <div className="mt-3">
+                {vStyle ? <VideoEditor src={preview} style={vStyle} /> : <p className="animate-pulse text-muted-foreground">Editing your video…</p>}
+              </div>
+            </div>
+          )}
           {(edited || (busy && !isVideo)) && (
             <div className="rounded-[var(--radius)] border border-border bg-card p-5">
               <h2 className="font-display text-3xl text-primary">Your edit</h2>
