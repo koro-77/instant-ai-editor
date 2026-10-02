@@ -27,6 +27,13 @@ const n = (v: unknown, d: number, lo: number, hi: number) => {
   return Math.min(hi, Math.max(lo, x));
 };
 
+const fmt = (s: number) => {
+  if (!isFinite(s) || s < 0) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
+};
+
 function drawFrame(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, s: VideoStyle, t: number) {
   const { width: W, height: H } = ctx.canvas;
   const filter = `brightness(${n(s.brightness, 1, 0.3, 2)}) contrast(${n(s.contrast, 1, 0.3, 2.5)}) saturate(${n(s.saturate, 1, 0, 3)}) hue-rotate(${n(s.hue, 0, -180, 180)}deg) sepia(${n(s.sepia, 0, 0, 1)}) grayscale(${n(s.grayscale, 0, 0, 1)}) blur(${n(s.blur, 0, 0, 6)}px)`;
@@ -108,10 +115,12 @@ function drawFrame(ctx: CanvasRenderingContext2D, video: HTMLVideoElement, s: Vi
 export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const [pos, setPos] = useState({ t: 0, d: 0 });
+  const [media, setMedia] = useState({ playing: false, muted: false, volume: 1, rate: 1 });
+  const [menu, setMenu] = useState(false);
   const [download, setDownload] = useState<{ url: string; ext: string } | null>(null);
-  const [playing, setPlaying] = useState(false);
   const styleRef = useRef(style);
   styleRef.current = style;
 
@@ -124,24 +133,36 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
       const k = Math.min(1, 1080 / Math.max(v.videoWidth, v.videoHeight));
       c.width = Math.round(v.videoWidth * k);
       c.height = Math.round(v.videoHeight * k);
-      setPlaying(!v.paused);
+      setPos({ t: v.currentTime, d: isFinite(v.duration) ? v.duration : 0 });
+      setMedia({ playing: !v.paused, muted: v.muted, volume: v.volume, rate: v.playbackRate });
     };
+    const sync = () =>
+      setMedia({ playing: !v.paused, muted: v.muted, volume: v.volume, rate: v.playbackRate });
     v.addEventListener("loadedmetadata", onMeta);
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    v.addEventListener("play", onPlay);
-    v.addEventListener("pause", onPause);
+    v.addEventListener("play", sync);
+    v.addEventListener("pause", sync);
+    v.addEventListener("volumechange", sync);
+    v.addEventListener("ratechange", sync);
     const loop = () => {
       if (v.readyState >= 2) drawFrame(ctx, v, styleRef.current, v.currentTime);
-      if (v.duration) setProgress(v.currentTime / v.duration);
+      if (v.duration) {
+        const d = isFinite(v.duration) ? v.duration : 0;
+        setPos((p) =>
+          Math.abs(p.t - v.currentTime) >= 0.05 || Math.abs(p.d - d) >= 0.05
+            ? { t: v.currentTime, d }
+            : p,
+        );
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
       v.removeEventListener("loadedmetadata", onMeta);
-      v.removeEventListener("play", onPlay);
-      v.removeEventListener("pause", onPause);
+      v.removeEventListener("play", sync);
+      v.removeEventListener("pause", sync);
+      v.removeEventListener("volumechange", sync);
+      v.removeEventListener("ratechange", sync);
     };
   }, [src]);
 
@@ -185,26 +206,170 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
     setExporting(false);
   };
 
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v || exporting) return;
+    if (v.paused) v.play().catch(() => {});
+    else v.pause();
+  };
+
+  const toggleFullscreen = () => {
+    const w = wrapRef.current;
+    if (!w) return;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else w.requestFullscreen?.().catch(() => {});
+  };
+
   return (
     <div>
-      <video ref={videoRef} src={src} loop playsInline crossOrigin="anonymous" className="hidden" />
-      <canvas ref={canvasRef} className="mx-auto max-h-[60vh] w-full rounded-[var(--radius)] bg-muted object-contain" />
-      <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
-        <div className="h-full bg-primary" style={{ width: `${progress * 100}%` }} />
+      <div ref={wrapRef} className="overflow-hidden rounded-[var(--radius)] border border-border bg-black">
+        <video ref={videoRef} src={src} loop playsInline crossOrigin="anonymous" className="hidden" />
+        <canvas ref={canvasRef} className="mx-auto block max-h-[60vh] w-full bg-black object-contain" />
+
+        {/* Native-style player controls */}
+        <div className="relative bg-black px-3 pb-2 pt-1.5 text-white">
+          <input
+            type="range"
+            min={0}
+            max={pos.d || 1}
+            step={0.01}
+            value={Math.min(pos.t, pos.d || 0)}
+            onChange={(e) => {
+              const v = videoRef.current;
+              if (v && isFinite(v.duration)) v.currentTime = Number(e.target.value);
+            }}
+            disabled={exporting}
+            aria-label="Seek"
+            className="block h-1 w-full cursor-pointer accent-white disabled:opacity-50"
+          />
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={togglePlay}
+              disabled={exporting}
+              aria-label={media.playing ? "Pause" : "Play"}
+              className="text-white/90 transition hover:text-white disabled:opacity-50"
+            >
+              {media.playing ? (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="size-5">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="size-5">
+                  <path d="M7 4.5v15l13-7.5z" />
+                </svg>
+              )}
+            </button>
+            <span className="text-xs tabular-nums text-white/80">
+              {fmt(pos.t)} / {fmt(pos.d)}
+            </span>
+
+            <div className="ml-auto flex items-center gap-3">
+              <div className="group flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const v = videoRef.current;
+                    if (v) v.muted = !v.muted;
+                  }}
+                  aria-label={media.muted ? "Unmute" : "Mute"}
+                  className="text-white/90 transition hover:text-white"
+                >
+                  {media.muted || media.volume === 0 ? (
+                    <svg viewBox="0 0 24 24" className="size-5">
+                      <path fill="currentColor" d="M3 9v6h4l5 4V5L7 9H3z" />
+                      <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="m16 9 5 6M21 9l-5 6" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="size-5">
+                      <path fill="currentColor" d="M3 9v6h4l5 4V5L7 9H3z" />
+                      <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M16 9a4 4 0 0 1 0 6" />
+                      <path fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" d="M18.5 6.5a8 8 0 0 1 0 11" />
+                    </svg>
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={media.muted ? 0 : media.volume}
+                  onChange={(e) => {
+                    const v = videoRef.current;
+                    if (!v) return;
+                    const val = Number(e.target.value);
+                    v.volume = val;
+                    v.muted = val === 0;
+                  }}
+                  aria-label="Volume"
+                  className="h-1 w-0 cursor-pointer accent-white transition-all duration-200 group-hover:w-16 focus:w-16"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label="Fullscreen"
+                className="text-white/90 transition hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-5">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                  <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                  <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                  <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMenu((m) => !m)}
+                aria-label="Playback options"
+                className="text-white/90 transition hover:text-white"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" className="size-5">
+                  <circle cx="12" cy="5" r="1.6" />
+                  <circle cx="12" cy="12" r="1.6" />
+                  <circle cx="12" cy="19" r="1.6" />
+                </svg>
+              </button>
+            </div>
+
+            {menu && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close menu"
+                  onClick={() => setMenu(false)}
+                  className="fixed inset-0 z-10 cursor-default"
+                />
+                <div className="absolute bottom-10 right-3 z-20 w-28 overflow-hidden rounded-md border border-white/15 bg-black py-1">
+                  <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/50">
+                    Speed
+                  </p>
+                  {[0.5, 1, 1.5, 2].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => {
+                        const v = videoRef.current;
+                        if (v) v.playbackRate = s;
+                        setMenu(false);
+                      }}
+                      className={`flex w-full items-center justify-between px-3 py-1.5 text-xs transition hover:bg-white/10 ${
+                        media.rate === s ? "text-white" : "text-white/60"
+                      }`}
+                    >
+                      <span>{s}×</span>
+                      {media.rate === s && <span>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
+
       <div className="mt-3 flex flex-wrap items-center gap-4">
-        <button
-          onClick={() => {
-            const v = videoRef.current;
-            if (!v) return;
-            if (v.paused) v.play().catch(() => {});
-            else v.pause();
-          }}
-          disabled={exporting}
-          className="rounded-full bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground hover:bg-muted disabled:opacity-50"
-        >
-          {playing ? "Pause" : "Play"}
-        </button>
         <button
           onClick={exportVideo}
           disabled={exporting}
