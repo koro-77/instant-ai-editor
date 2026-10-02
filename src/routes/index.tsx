@@ -75,6 +75,38 @@ async function videoFrames(file: File, count = 4): Promise<string[]> {
   return frames;
 }
 
+// Vague asks like "make it better" used to be passed straight to the image
+// model, which improvises and often degrades the photo. They now get a defined
+// tasteful upgrade, and every edit gets hard anti-degradation constraints.
+const VAGUE_MARKERS = [
+  "better",
+  "improve",
+  "best edit",
+  "do your best",
+  "do your magic",
+  "fix it",
+  "fix the",
+  "upgrade",
+  "prettier",
+  "make it pop",
+  "make it stand out",
+  "make it fire",
+  "make it look good",
+  "make it look nice",
+  "make it amazing",
+  "make it professional",
+];
+
+function photoPrompt(raw: string) {
+  const instruction = raw.trim();
+  const low = instruction.toLowerCase();
+  const vague = !instruction || VAGUE_MARKERS.some((m) => low.includes(m));
+  const brief = vague
+    ? "Apply a tasteful professional upgrade: a clean, punchy color grade with natural skin tones, balanced exposure, crisp but believable contrast and slightly richer color — the finish you see on top Shorts and Reels. Keep it subtle and believable; no heavy filter look"
+    : `Apply exactly this requested edit: "${instruction}"`;
+  return `${brief}. Hard constraints: keep the same subject, people, faces, framing, background and composition; do not add, remove, move or distort any objects, text or logos; keep skin tones natural; no oversaturated HDR look; keep the original resolution and aspect ratio.`;
+}
+
 function Index() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -139,10 +171,7 @@ function Index() {
             const blob = await (await fetch(images[0]!)).blob();
             const form = new FormData();
             form.append("image", new File([blob], "photo.jpg", { type: "image/jpeg" }));
-            form.append(
-              "prompt",
-              `Edit this photo: ${instruction.trim() || "apply the best trending social media edit style for it"}. Keep the same people, subject, framing and composition — only change color grading, lighting and style.`,
-            );
+          form.append("prompt", photoPrompt(instruction));
             await streamImage("/api/edit-image", form, (src, fin) => {
               setEdited(src);
               setEditFinal(fin);
