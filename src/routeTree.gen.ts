@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiCoachRouteImport } from './routes/api/coach'
 import { Route as ApiEditImageRouteImport } from './routes/api/edit-image'
+import { Route as ApiVideoStyleRouteImport } from './routes/api/video-style'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const ApiEditImageRoute = ApiEditImageRouteImport.update({
   path: '/api/edit-image',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiVideoStyleRoute = ApiVideoStyleRouteImport.update({
+  id: '/api/video-style',
+  path: '/api/video-style',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/coach': typeof ApiCoachRoute
   '/api/edit-image': typeof ApiEditImageRoute
+  '/api/video-style': typeof ApiVideoStyleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/coach': typeof ApiCoachRoute
   '/api/edit-image': typeof ApiEditImageRoute
+  '/api/video-style': typeof ApiVideoStyleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/coach': typeof ApiCoachRoute
   '/api/edit-image': typeof ApiEditImageRoute
+  '/api/video-style': typeof ApiVideoStyleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/coach' | '/api/edit-image'
+  fullPaths: '/' | '/api/coach' | '/api/edit-image' | '/api/video-style'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/coach' | '/api/edit-image'
-  id: '__root__' | '/' | '/api/coach' | '/api/edit-image'
+  to: '/' | '/api/coach' | '/api/edit-image' | '/api/video-style'
+  id: '__root__' | '/' | '/api/coach' | '/api/edit-image' | '/api/video-style'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiCoachRoute: typeof ApiCoachRoute
   ApiEditImageRoute: typeof ApiEditImageRoute
+  ApiVideoStyleRoute: typeof ApiVideoStyleRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiEditImageRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/video-style': {
+      id: '/api/video-style'
+      path: '/api/video-style'
+      fullPath: '/api/video-style'
+      preLoaderRoute: typeof ApiVideoStyleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiCoachRoute: ApiCoachRoute,
   ApiEditImageRoute: ApiEditImageRoute,
+  ApiVideoStyleRoute: ApiVideoStyleRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
