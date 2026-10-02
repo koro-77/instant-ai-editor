@@ -109,7 +109,7 @@ function Index() {
       const edit = isVideo
         ? Promise.resolve()
         : (async () => {
-            const blob = await (await fetch(images[0])).blob();
+            const blob = await (await fetch(images[0]!)).blob();
             const form = new FormData();
             form.append("image", new File([blob], "photo.jpg", { type: "image/jpeg" }));
             form.append(
