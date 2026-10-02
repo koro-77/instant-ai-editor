@@ -111,6 +111,7 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [download, setDownload] = useState<{ url: string; ext: string } | null>(null);
+  const [playing, setPlaying] = useState(false);
   const styleRef = useRef(style);
   styleRef.current = style;
 
@@ -123,9 +124,13 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
       const k = Math.min(1, 1080 / Math.max(v.videoWidth, v.videoHeight));
       c.width = Math.round(v.videoWidth * k);
       c.height = Math.round(v.videoHeight * k);
-      v.play().catch(() => {});
+      setPlaying(!v.paused);
     };
     v.addEventListener("loadedmetadata", onMeta);
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    v.addEventListener("play", onPlay);
+    v.addEventListener("pause", onPause);
     const loop = () => {
       if (v.readyState >= 2) drawFrame(ctx, v, styleRef.current, v.currentTime);
       if (v.duration) setProgress(v.currentTime / v.duration);
@@ -135,6 +140,8 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
     return () => {
       cancelAnimationFrame(raf);
       v.removeEventListener("loadedmetadata", onMeta);
+      v.removeEventListener("play", onPlay);
+      v.removeEventListener("pause", onPause);
     };
   }, [src]);
 
@@ -172,7 +179,7 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
     rec.stop();
     await done;
     v.loop = true;
-    v.play().catch(() => {});
+    v.pause();
     const type = rec.mimeType || "video/webm";
     setDownload({ url: URL.createObjectURL(new Blob(chunks, { type })), ext: type.includes("mp4") ? "mp4" : "webm" });
     setExporting(false);
@@ -186,6 +193,18 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
         <div className="h-full bg-primary" style={{ width: `${progress * 100}%` }} />
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-4">
+        <button
+          onClick={() => {
+            const v = videoRef.current;
+            if (!v) return;
+            if (v.paused) v.play().catch(() => {});
+            else v.pause();
+          }}
+          disabled={exporting}
+          className="rounded-full bg-secondary px-4 py-2 text-sm font-semibold text-secondary-foreground hover:bg-muted disabled:opacity-50"
+        >
+          {playing ? "Pause" : "Play"}
+        </button>
         <button
           onClick={exportVideo}
           disabled={exporting}
