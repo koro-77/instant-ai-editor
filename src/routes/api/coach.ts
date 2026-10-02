@@ -15,7 +15,7 @@ Look carefully at the media the user shared and their request. Respond in markdo
 2. **Best edit styles for this** – 3 styles that fit, each with one line on why it works and where it's popular.
 3. **Full lesson** – a beginner-friendly numbered step-by-step lesson to do the edit the user asked for (or the best style if they didn't say), with exact slider values for free apps (Lightroom Mobile / Snapseed for photos, CapCut for video). Explain WHY each step matters.
 4. **Pro tip** – one short tip.
-${"For videos you get a few frames from the clip; mention timing, cuts, music and transitions too."}
+For videos you get a few frames from the clip; mention timing, cuts, music and transitions too.
 Keep the language simple — the user is a beginner.`;
 
 export const Route = createFileRoute("/api/coach")({
@@ -71,16 +71,7 @@ export const Route = createFileRoute("/api/coach")({
         }
 
         const encoder = new TextEncoder();
-        const out = new TransformStream<string, Uint8Array>({
-          start() {},
-          transform(chunk, controller) {
-            parser.feed(chunk);
-            function noop() {}
-            noop();
-            void controller;
-          },
-        });
-        const writer = out.writable.getWriter();
+        const pending: Uint8Array[] = [];
         let refused = false;
         const parser = createParser({
           onEvent(ev) {
@@ -97,8 +88,6 @@ export const Route = createFileRoute("/api/coach")({
             } catch {}
           },
         });
-        const pending: Uint8Array[] = [];
-        void writer;
 
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
