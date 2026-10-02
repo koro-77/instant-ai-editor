@@ -123,8 +123,10 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
   const [pos, setPos] = useState({ t: 0, d: 0 });
   const [media, setMedia] = useState({ playing: false, muted: false, volume: 1, rate: 1 });
   const [menu, setMenu] = useState(false);
+  const [compare, setCompare] = useState(false);
   const [download, setDownload] = useState<{ url: string; ext: string } | null>(null);
   const dirtyRef = useRef(true);
+  const compareRef = useRef(false);
   const styleRef = useRef(style);
   styleRef.current = style;
 
@@ -153,7 +155,7 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
       tctx.putImageData(img, 0, 0);
     }
     const grainPat = ctx.createPattern(tile, "repeat");
-    const render = () => drawFrame(ctx, v, styleRef.current, v.currentTime, grainPat);
+    const render = () => drawFrame(ctx, v, compareRef.current ? {} : styleRef.current, v.currentTime, grainPat);
 
     const onMeta = () => {
       const k = Math.min(1, 1080 / Math.max(v.videoWidth, v.videoHeight));
@@ -214,6 +216,13 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
     dirtyRef.current = true;
     setDownload(null);
   }, [style]);
+
+  // Sync the compare flag to the render loop only after React commits it, then
+  // force a fresh frame so a paused preview always shows the right version.
+  useEffect(() => {
+    compareRef.current = compare;
+    dirtyRef.current = true;
+  }, [compare]);
 
   const exportVideo = async () => {
     const v = videoRef.current!;
@@ -414,6 +423,19 @@ export function VideoEditor({ src, style }: { src: string; style: VideoStyle }) 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-4">
+        <button
+          type="button"
+          onClick={() => setCompare((c) => !c)}
+          disabled={exporting}
+          aria-pressed={compare}
+          className={`rounded-full border px-4 py-2 text-sm font-semibold transition disabled:opacity-50 ${
+            compare
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-secondary text-secondary-foreground hover:bg-muted"
+          }`}
+        >
+          {compare ? "Show my edit" : "Show original"}
+        </button>
         <button
           onClick={exportVideo}
           disabled={exporting}
