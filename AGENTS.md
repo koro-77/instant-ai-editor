@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- AI calls live in server routes under src/routes/api (coach = Responses text stream, edit-image = image edits); keeps the API key server-side and allows streaming.
