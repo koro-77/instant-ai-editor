@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiFindClipsRouteImport } from './routes/api/find-clips'
+import { Route as ApiIdentifyEditRouteImport } from './routes/api/identify-edit'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const ApiFindClipsRoute = ApiFindClipsRouteImport.update({
   path: '/api/find-clips',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiIdentifyEditRoute = ApiIdentifyEditRouteImport.update({
+  id: '/api/identify-edit',
+  path: '/api/identify-edit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/find-clips': typeof ApiFindClipsRoute
+  '/api/identify-edit': typeof ApiIdentifyEditRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/find-clips': typeof ApiFindClipsRoute
+  '/api/identify-edit': typeof ApiIdentifyEditRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/find-clips': typeof ApiFindClipsRoute
+  '/api/identify-edit': typeof ApiIdentifyEditRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/find-clips'
+  fullPaths: '/' | '/api/find-clips' | '/api/identify-edit'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/find-clips'
-  id: '__root__' | '/' | '/api/find-clips'
+  to: '/' | '/api/find-clips' | '/api/identify-edit'
+  id: '__root__' | '/' | '/api/find-clips' | '/api/identify-edit'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiFindClipsRoute: typeof ApiFindClipsRoute
+  ApiIdentifyEditRoute: typeof ApiIdentifyEditRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiFindClipsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/identify-edit': {
+      id: '/api/identify-edit'
+      path: '/api/identify-edit'
+      fullPath: '/api/identify-edit'
+      preLoaderRoute: typeof ApiIdentifyEditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiFindClipsRoute: ApiFindClipsRoute,
+  ApiIdentifyEditRoute: ApiIdentifyEditRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
