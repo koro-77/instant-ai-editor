@@ -9,4 +9,4 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 
-- AI calls live in server routes under src/routes/api (coach = Responses text stream, edit-image = image edits); keeps the API key server-side and allows streaming.
+- AI calls live in server routes under src/routes/api (find-clips = Responses stream with JSON schema, consumed server-side); keeps the API key server-side.
